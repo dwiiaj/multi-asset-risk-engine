@@ -38,6 +38,8 @@ TRADING_DAYS = 252
 
 RISK_FREE_RATE = 0.02
 
+MAX_ASSET_WEIGHT = 0.35
+
 MONTE_CARLO_SIMULATIONS = 100_000
 
 RANDOM_SEED = 42
@@ -595,6 +597,9 @@ def gaussian_var(
 asset_metrics = []
 
 
+asset_metrics = []
+
+
 for asset in returns.columns:
 
     series = (
@@ -602,13 +607,11 @@ for asset in returns.columns:
         .dropna()
     )
 
-
     ann_return = (
         annualised_return(
             series
         )
     )
-
 
     ann_vol = (
         annualised_volatility(
@@ -616,21 +619,20 @@ for asset in returns.columns:
         )
     )
 
-
-    sharpe = (
-
-        (
-            ann_return
-            - RISK_FREE_RATE
-        )
-
-        / ann_vol
-
-        if ann_vol > 0
-
-        else np.nan
+    annual_mean_return = (
+        series.mean()
+        * TRADING_DAYS
     )
 
+    sharpe = (
+        (
+            annual_mean_return
+            - RISK_FREE_RATE
+        )
+        / ann_vol
+        if ann_vol > 0
+        else np.nan
+    )
 
     asset_metrics.append({
 
@@ -671,11 +673,9 @@ for asset in returns.columns:
 
     })
 
-
 asset_risk_summary = pd.DataFrame(
     asset_metrics
 )
-
 
 asset_risk_summary = (
     asset_risk_summary
@@ -927,14 +927,15 @@ equal_ann_vol = (
     )
 )
 
+equal_annual_mean_return = (
+    equal_weight_returns.mean()
+    * TRADING_DAYS
+)
 
 equal_sharpe = (
-    (
-        equal_ann_return
-        - RISK_FREE_RATE
-    )
-    / equal_ann_vol
-)
+    equal_annual_mean_return
+    - RISK_FREE_RATE
+) / equal_ann_vol
 
 
 equal_max_dd = (
@@ -1302,17 +1303,14 @@ for asset in returns.columns:
         ]
     )
 
-
     X = sm.add_constant(
         market_return
     )
-
 
     regression = sm.OLS(
         y,
         X
     ).fit()
-
 
     alpha_daily = (
         regression.params[
@@ -1320,13 +1318,11 @@ for asset in returns.columns:
         ]
     )
 
-
     beta = (
         regression.params[
             "US Equities"
         ]
     )
-
 
     regression_rows.append({
 
@@ -1365,7 +1361,6 @@ print(
     .round(4)
     .to_string(index=False)
 )
-
 
 # ============================================================
 # 13. PORTFOLIO OPTIMISATION
@@ -1421,54 +1416,40 @@ def negative_sharpe(
         )
     )
 
-
     if volatility == 0:
-
         return 1e6
 
-
     sharpe = (
-
         portfolio_return(
             weights
         )
         - RISK_FREE_RATE
-
     ) / volatility
-
 
     return -sharpe
 
 
 constraints = (
-
     {
-        "type":
-            "eq",
-
-        "fun":
-            lambda weights:
-            np.sum(weights) - 1
+        "type": "eq",
+        "fun": lambda weights: np.sum(weights) - 1
     },
-
 )
 
 
 bounds = tuple(
     (
         0.0,
-        1.0
+        MAX_ASSET_WEIGHT
     )
     for _ in range(
         number_of_assets
     )
 )
 
-
 initial_weights = (
     equal_weights.copy()
 )
-
 
 minimum_variance_result = minimize(
 
@@ -1842,16 +1823,13 @@ np.random.seed(
     RANDOM_SEED
 )
 
-
 number_of_portfolios = 5000
-
 
 frontier_rows = []
 
+generated_portfolios = 0
 
-for _ in range(
-    number_of_portfolios
-):
+while generated_portfolios < number_of_portfolios:
 
     weights = (
         np.random.dirichlet(
@@ -1861,20 +1839,17 @@ for _ in range(
         )
     )
 
-
     port_return = (
         portfolio_return(
             weights
         )
     )
 
-
     port_vol = (
         portfolio_volatility(
             weights
         )
     )
-
 
     sharpe = (
 
@@ -1885,7 +1860,6 @@ for _ in range(
         / port_vol
 
     )
-
 
     frontier_rows.append({
 
@@ -1900,11 +1874,11 @@ for _ in range(
 
     })
 
+    generated_portfolios += 1
 
 efficient_frontier = pd.DataFrame(
     frontier_rows
 )
-
 
 efficient_frontier.to_csv(
     TABLE_DIR
@@ -1912,11 +1886,9 @@ efficient_frontier.to_csv(
     index=False
 )
 
-
 fig, ax = plt.subplots(
     figsize=(10, 7)
 )
-
 
 scatter = ax.scatter(
 
@@ -1939,7 +1911,6 @@ scatter = ax.scatter(
     alpha=0.5
 
 )
-
 
 ax.scatter(
 
